@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouTV</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>YouTV</h1>
+    <p class="subtitle">Random playlist from your Raindrop collection</p>
+  </header>
+
+  <main>
+    <div class="controls">
+      <button id="generateBtn">Generate Playlist</button>
+      <span id="totalDuration" class="duration-badge" hidden></span>
+    </div>
+
+    <div id="status" class="status" hidden></div>
+    <div id="playlist" class="playlist"></div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
