@@ -3,6 +3,14 @@ const totalDurationEl = document.getElementById('totalDuration');
 const statusEl = document.getElementById('status');
 const playlistEl = document.getElementById('playlist');
 
+// --- Logger -----------------------------------------------------------
+const log = {
+  info:  (msg, data) => console.log( `[YouTV] INFO  ${msg}`, data ?? ''),
+  warn:  (msg, data) => console.warn( `[YouTV] WARN  ${msg}`, data ?? ''),
+  error: (msg, data) => console.error(`[YouTV] ERROR ${msg}`, data ?? ''),
+};
+
+// --- Helpers ----------------------------------------------------------
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -18,6 +26,10 @@ function showStatus(msg) {
 
 function hideStatus() {
   statusEl.hidden = true;
+}
+
+function escHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function renderCard(video) {
@@ -43,27 +55,29 @@ function renderCard(video) {
   return card;
 }
 
-function escHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
+// --- Remove -----------------------------------------------------------
 async function removeVideo(card, raindropId) {
   const btn = card.querySelector('.remove-btn');
   btn.disabled = true;
   btn.textContent = '…';
+  log.info('Removing video', { raindropId });
 
   try {
     const res = await fetch(`/api/raindrop/${raindropId}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Delete failed');
+    log.info('DELETE response', { raindropId, status: res.status });
+    if (!res.ok) throw new Error(`Server responded ${res.status}`);
+
     card.classList.add('removing');
     card.addEventListener('transitionend', () => {
       card.remove();
       updateTotalAfterRemove();
+      log.info('Card removed from DOM', { raindropId });
     }, { once: true });
-  } catch {
+  } catch (err) {
+    log.error('Failed to remove video', { raindropId, error: err.message });
     btn.disabled = false;
     btn.textContent = '✕ Remove';
-    alert('Failed to remove video. Check the console.');
+    alert(`Failed to remove video: ${err.message}`);
   }
 }
 
@@ -73,33 +87,46 @@ function updateTotalAfterRemove() {
     totalDurationEl.hidden = true;
     return;
   }
-  // total is tracked via data attributes set at render time
   const total = remaining.reduce((sum, c) => sum + parseInt(c.dataset.seconds ?? 0), 0);
   totalDurationEl.textContent = `Total: ${formatDuration(total)}`;
+  log.info('Total updated after remove', { remainingCards: remaining.length, totalSeconds: total });
 }
 
+// --- Generate ---------------------------------------------------------
 async function generatePlaylist() {
+  log.info('Generate playlist clicked');
   generateBtn.disabled = true;
   generateBtn.textContent = 'Generating…';
   playlistEl.innerHTML = '';
   totalDurationEl.hidden = true;
   showStatus('Fetching your Raindrop collection…');
 
+  const t0 = performance.now();
+
   try {
+    log.info('Calling GET /api/playlist');
     const res = await fetch('/api/playlist');
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? 'Unknown error');
+    const elapsed = Math.round(performance.now() - t0);
+
+    log.info('Response received', { status: res.status, elapsed: `${elapsed}ms`, videos: data.playlist?.length });
+
+    if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`);
 
     hideStatus();
     totalDurationEl.textContent = `Total: ${formatDuration(data.totalSeconds)}`;
     totalDurationEl.hidden = false;
 
     for (const video of data.playlist) {
+      log.info('Rendering card', { raindropId: video.raindropId, title: video.title, durationSeconds: video.durationSeconds });
       const card = renderCard(video);
       card.dataset.seconds = video.durationSeconds;
       playlistEl.appendChild(card);
     }
+
+    log.info('Playlist rendered', { count: data.playlist.length, totalSeconds: data.totalSeconds });
   } catch (err) {
+    log.error('generatePlaylist failed', { error: err.message });
     showStatus(`Error: ${err.message}`);
   } finally {
     generateBtn.disabled = false;
@@ -108,3 +135,4 @@ async function generatePlaylist() {
 }
 
 generateBtn.addEventListener('click', generatePlaylist);
+log.info('app.js loaded');

@@ -89,11 +89,7 @@ No YouTube API key needed.
 docker build -t youtv .
 
 # Run (passing env vars at runtime — never baked into the image)
-docker run -d \
-  -p 3000:3000 \
-  --env-file .env \
-  --name youtv \
-  youtv
+docker run --rm -p 3000:3000 --env-file .env --name youtv youtv
 ```
 
 ---
