@@ -5,6 +5,8 @@ import { dirname, join } from 'path';
 
 import { log } from './src/logger.js';
 import { PORT, RAINDROP_TOKEN, COLLECTION_ID } from './src/config.js';
+import { initDb, getVideoCount } from './src/db.js';
+import { syncCollection } from './src/sync.js';
 import router from './src/routes.js';
 
 const app = express();
@@ -13,6 +15,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // --- Startup checks ---------------------------------------------------
 log('info', 'Starting YouTV', { PORT, COLLECTION_ID, RAINDROP_TOKEN_SET: !!RAINDROP_TOKEN });
 if (!RAINDROP_TOKEN) log('error', 'RAINDROP_TOKEN is not set — requests to Raindrop API will fail');
+
+// --- Database ---------------------------------------------------------
+initDb();
+
+// Auto-sync on first run (empty library)
+if (getVideoCount() === 0) {
+  log('info', 'Library is empty — running initial sync in background');
+  syncCollection().catch(err => log('error', 'Initial auto-sync failed', { error: err.message }));
+}
 
 // --- Middleware -------------------------------------------------------
 app.use((req, res, next) => {

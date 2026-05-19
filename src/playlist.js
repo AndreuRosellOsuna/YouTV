@@ -1,7 +1,6 @@
 import { log } from './logger.js';
-import { MIN_SECONDS, MAX_SECONDS, DURATION_CONCURRENCY } from './config.js';
-import { fetchAllRaindrops } from './raindrop.js';
-import { extractVideoId, fetchDuration, thumbnailUrl } from './youtube.js';
+import { MIN_SECONDS, MAX_SECONDS } from './config.js';
+import { getAllVideos } from './db.js';
 
 function shuffle(arr) {
   const out = [...arr];
@@ -40,51 +39,24 @@ function pickVideos(videos) {
   return { playlist, totalSeconds: total };
 }
 
-export async function buildPlaylist() {
-  // 1. Fetch all raindrops
-  const raindrops = await fetchAllRaindrops();
+// Synchronous — reads only from the local DB, no external API calls
+export function buildPlaylist() {
+  const rows = getAllVideos();
 
-  // 2. Filter to YouTube links and extract video IDs
-  const ytItems = raindrops
-    .map(r => ({ raindropId: r._id, title: r.title, url: r.link, videoId: extractVideoId(r.link) }))
-    .filter(r => r.videoId !== null);
-
-  log('info', 'YouTube items extracted', {
-    total: raindrops.length,
-    youtube: ytItems.length,
-    skipped: raindrops.length - ytItems.length,
-  });
-
-  // 3. Resolve durations in concurrent batches
-  const videos = [];
-  for (let i = 0; i < ytItems.length; i += DURATION_CONCURRENCY) {
-    const batch = ytItems.slice(i, i + DURATION_CONCURRENCY);
-    const results = await Promise.all(
-      batch.map(async item => {
-        const secs = await fetchDuration(item.videoId);
-        if (!secs || secs < 60) {
-          log('warn', 'Skipping video — duration missing or too short', { videoId: item.videoId, secs });
-          return null;
-        }
-        return { ...item, durationSeconds: secs, thumbnail: thumbnailUrl(item.videoId) };
-      })
-    );
-    videos.push(...results.filter(Boolean));
-    log('debug', 'Duration batch done', {
-      batch: Math.floor(i / DURATION_CONCURRENCY) + 1,
-      resolved: results.filter(Boolean).length,
-    });
-  }
-
-  log('info', 'Durations resolved', { valid: videos.length, skipped: ytItems.length - videos.length });
+  const videos = rows.map(r => ({
+    raindropId:      r.raindrop_id,
+    title:           r.title,
+    url:             r.url,
+    videoId:         r.video_id,
+    durationSeconds: r.duration_seconds,
+    thumbnail:       r.thumbnail,
+  }));
 
   if (videos.length === 0) {
-    throw new Error('No YouTube videos found in collection');
+    throw new Error('No videos in library — run a sync first.');
   }
 
-  // 4. Pick a random set within the target duration window
   const { playlist, totalSeconds } = pickVideos(videos);
   log('info', 'Playlist built', { videos: playlist.length, totalSeconds });
-
   return { playlist, totalSeconds };
 }
